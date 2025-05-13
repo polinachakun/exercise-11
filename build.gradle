@@ -1,0 +1,58 @@
+/*
+   Application Hello World
+
+   Gradle build file for JaCaMo Application
+*/
+
+defaultTasks 'run'
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+version '1.1'
+group   'org.jacamo'
+
+repositories {
+    mavenCentral()
+
+    maven { url "https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master" }
+    maven { url "https://repo.gradle.org/gradle/libs-releases" }
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation('com.github.GiugAles:jacamo:SS2025')
+    implementation ('com.github.GiugAles:jacamo-hypermedia:SS2025-1')
+    implementation 'com.github.Interactions-HSG:wot-td-java:master-SNAPSHOT'
+    implementation 'com.google.guava:guava:23.5-jre'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.0'
+    implementation 'org.apache.httpcomponents.client5:httpclient5-fluent:5.0'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/env'
+            srcDir 'src/agt'
+            srcDir 'src/org'
+            srcDir 'src/int'
+            srcDir 'src/java'
+        }
+        resources {
+            srcDir 'src/resources'
+        }
+    }
+}
+
+task task (type: JavaExec, dependsOn: 'classes') {
+    description 'runs the application for task'
+    group ' JaCaMo'
+    main = 'jacamo.infra.JaCaMoLauncher'
+    args 'task.jcm'
+    classpath sourceSets.main.runtimeClasspath
+}
+
+clean {
+    delete 'bin'
+    delete 'build'
+}
