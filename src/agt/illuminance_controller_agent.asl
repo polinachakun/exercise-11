@@ -17,6 +17,12 @@ learning_lab_environment("https://raw.githubusercontent.com/Interactions-HSG/exa
 // level of Rank 3. Modify the belief so that the agent can learn to handle different goals.
 task_requirements([2,3]).
 
+learning_episodes(10).       
+learning_alpha(0.2).          
+learning_gamma(0.8).         
+learning_epsilon(0.4).       
+goal_reward(50.0).           
+
 /* Initial goals */
 !start. // the agent has the goal to start
 
@@ -30,10 +36,14 @@ task_requirements([2,3]).
 */
 @start
 +!start : learning_lab_environment(Url) 
-  & task_requirements([Z1Level, Z2Level]) <-
+  & task_requirements([Z1Level, Z2Level])
+  & learning_episodes(Episodes)
+  & learning_alpha(Alpha)
+  & learning_gamma(Gamma)
+  & learning_epsilon(Epsilon)
+  & goal_reward(Reward) <-
 
-  .print("Hello world");
-  .print("I want to achieve Z1Level=", Z1Level, " and Z2Level=",Z2Level);
+ .print("I want to achieve Z1Level=", Z1Level, " and Z2Level=",Z2Level);
 
   // creates a QLearner artifact for learning the lab Thing described by the W3C WoT TD located at URL
   makeArtifact("qlearner", "tools.QLearner", [Url], QLArtId);
@@ -41,10 +51,38 @@ task_requirements([2,3]).
   // creates a ThingArtifact artifact for reading and acting on the state of the lab Thing
   makeArtifact("lab", "org.hyperagents.jacamo.artifacts.wot.ThingArtifact", [Url], LabArtId);
   
-  // example use of the getActionFromState operation of the QLearner artifact
-  // relevant for Task 2.3
-  getActionFromState([1,1], [0, 0, false, false, false, false, 3], ActionTag, PayloadTags, Payload);
+  .print("Artifacts created successfully");
+  
+  !learn_with_timeout([Z1Level, Z2Level]);
+  .
 
-  // example use of the invokeAction operation of the ThingArtifact 
-  //invokeAction(ActionTag, PayloadTags, Payload)
++!learn_with_timeout(GoalDescription) : 
+    learning_episodes(Episodes)
+  & learning_alpha(Alpha)
+  & learning_gamma(Gamma)
+  & learning_epsilon(Epsilon)
+  & goal_reward(Reward) <-
+  
+  .print("Starting Q-learning with TIMEOUT protection...");
+  
+  .wait(1000); 
+  
+  calculateQ(GoalDescription, Episodes, Alpha, Gamma, Epsilon, Reward);
+  
+  .print("Q-learning completed (or timed out)");
+  
+  !test_result(GoalDescription);
+  .
+
++!test_result(GoalDescription) <-
+  .print("Testing learned policy...");
+  
+  getActionFromState(GoalDescription, [0, 0, false, false, false, false, 1], ActionTag, PayloadTags, Payload);
+  .print("Recommended action: ", ActionTag, " with payload: ", Payload);
+  
+  .
+
++!learn_with_timeout(GoalDescription) <-
+  .print("ERROR: Q-learning failed or timed out");
+  .print("This suggests there may be an infinite loop in the calculateQ method");
   .

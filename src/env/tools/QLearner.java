@@ -55,8 +55,8 @@ public class QLearner extends Artifact {
 * @param epsilonObj the exploration probability [0,1]
 * @param rewardObj the reward assigned when reaching the goal state
 **/
-  @OPERATION
-  public void calculateQ(Object[] goalDescription, Object episodesObj, Object alphaObj, Object gammaObj, Object epsilonObj, Object rewardObj) {
+@OPERATION
+public void calculateQ(Object[] goalDescription, Object episodesObj, Object alphaObj, Object gammaObj, Object epsilonObj, Object rewardObj) {
     int totalEpisodes = Integer.parseInt(episodesObj.toString());
     double learningRate = Double.parseDouble(alphaObj.toString());
     double discountFactor = Double.parseDouble(gammaObj.toString());
@@ -69,32 +69,34 @@ public class QLearner extends Artifact {
     double[][] qMatrix = createQTable();
     int goalHash = generateGoalKey(goalDescription);
 
-    List<Object> goalPattern = Arrays.asList(goalDescription[0], goalDescription[1], null, null, null, null, null);
-    List<Integer> goalStates = lab.getCompatibleStates(goalPattern);
+    int targetZ1 = Integer.parseInt(goalDescription[0].toString());
+    int targetZ2 = Integer.parseInt(goalDescription[1].toString());
     
-    if (goalStates.isEmpty()) {
-        LOGGER.severe("No goal states found for goal description: " + Arrays.toString(goalDescription));
-        return;
-    }
-    
-    LOGGER.info("Found " + goalStates.size() + " goal states for " + Arrays.toString(goalDescription));
+    LOGGER.info("Target goal: Z1=" + targetZ1 + ", Z2=" + targetZ2);
 
     for (int episodeNum = 0; episodeNum < totalEpisodes; episodeNum++) {
         initializeRandomState();
         int currentStateIdx = lab.readCurrentState();
-        final int MAX_EPISODE_STEPS = 100;
+        
+        final int MAX_EPISODE_STEPS = 50; 
+        boolean goalReached = false;
         
         for (int stepCount = 0; stepCount < MAX_EPISODE_STEPS; stepCount++) {
             List<Integer> validActions = lab.getApplicableActions(currentStateIdx);
             
-            if (validActions.size() == 0) {
+            if (validActions.isEmpty()) {
+                LOGGER.fine("No valid actions available at state " + currentStateIdx);
                 break;
             }
             
             int selectedAction = selectActionEpsilonGreedy(qMatrix, currentStateIdx, validActions, explorationRate);
+            
             lab.performAction(selectedAction);
             int nextStateIdx = lab.readCurrentState();
-            double stepReward = computeRewardValue(goalDescription, goalStates, goalReward);
+            
+            goalReached = isGoalState(goalDescription);
+            
+            double stepReward = computeRewardValue(goalDescription, null, goalReward);
             
             double maxFutureQ = findMaxQValue(qMatrix, nextStateIdx, lab.getApplicableActions(nextStateIdx));
             double currentQValue = qMatrix[currentStateIdx][selectedAction];
@@ -103,23 +105,66 @@ public class QLearner extends Artifact {
 
             currentStateIdx = nextStateIdx;
 
-            if (goalStates.contains(currentStateIdx)) {
+            if (goalReached) {
+                LOGGER.fine("Goal reached in episode " + episodeNum + " at step " + stepCount);
                 break;
             }
         }
 
-        if ((episodeNum + 1) % 100 == 0) {
+      
+        if ((episodeNum + 1) % 50 == 0) {
             LOGGER.info("Training progress: " + (episodeNum + 1) + "/" + totalEpisodes + " episodes completed");
+            
+            int currentState = lab.readCurrentState();
+            lab.readCurrentState();
+            if (lab.currentState != null && lab.currentState.size() >= 2) {
+                LOGGER.info("Current state: Z1=" + lab.currentState.get(0) + ", Z2=" + lab.currentState.get(1));
+            }
+        }
+        
+        if (episodeNum > 0 && episodeNum % 100 == 0) {
+            try {
+                Thread.sleep(100); 
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
     }
 
     qTables.put(goalHash, qMatrix);
     LOGGER.info("Q-Learning training completed for goal " + Arrays.toString(goalDescription));
     
-    if (LOGGER.isLoggable(Level.INFO)) {
-        displayQTableSample(qMatrix, goalStates);
+    displayQTableSample(qMatrix, null);
+}
+
+private boolean isGoalState(Object[] goalDescription) {
+    try {
+        int targetZ1Level = Integer.parseInt(goalDescription[0].toString());
+        int targetZ2Level = Integer.parseInt(goalDescription[1].toString());
+
+        lab.readCurrentState();
+        List<Integer> stateVector = lab.currentState;
+
+        if (stateVector == null || stateVector.size() < 2) {
+            return false;
+        }
+
+        int actualZ1Level = stateVector.get(0);
+        int actualZ2Level = stateVector.get(1);
+
+        boolean goalAchieved = (actualZ1Level == targetZ1Level && actualZ2Level == targetZ2Level);
+        
+        if (goalAchieved) {
+            LOGGER.fine("Goal state detected: Z1=" + actualZ1Level + ", Z2=" + actualZ2Level);
+        }
+        
+        return goalAchieved;
+    } catch (Exception e) {
+        LOGGER.warning("Error checking goal state: " + e.getMessage());
+        return false;
     }
-  }
+}
 /**
 * Returns information about the next best action based on a provided state and the QTable for
 * a goal description. The returned information can be used by agents to invoke an action 
@@ -210,19 +255,25 @@ public class QLearner extends Artifact {
     return qMatrix;
   }
 
-  private void initializeRandomState() {
-      Random rng = new Random();
-      int numRandomActions = rng.nextInt(6) + 3;
-      
-      for (int i = 0; i < numRandomActions; i++) {
-          int currentState = lab.readCurrentState();
-          List<Integer> availableActions = lab.getApplicableActions(currentState);
-          if (!availableActions.isEmpty()) {
-              int randomActionIdx = rng.nextInt(availableActions.size());
-              lab.performAction(availableActions.get(randomActionIdx));
-          }
-      }
-  }
+private void initializeRandomState() {
+    try {
+        Random rng = new Random();
+        int numRandomActions = rng.nextInt(3) + 1;
+        
+        for (int i = 0; i < numRandomActions; i++) {
+            int currentState = lab.readCurrentState();
+            List<Integer> availableActions = lab.getApplicableActions(currentState);
+            if (!availableActions.isEmpty()) {
+                int randomActionIdx = rng.nextInt(availableActions.size());
+                lab.performAction(availableActions.get(randomActionIdx));
+                
+                Thread.sleep(10);
+            }
+        }
+    } catch (Exception e) {
+        LOGGER.warning("Error initializing random state: " + e.getMessage());
+    }
+}
 
   private int selectActionEpsilonGreedy(double[][] qMatrix, int state, List<Integer> validActions, double epsilon) {
       Random rng = new Random();
@@ -262,52 +313,76 @@ public class QLearner extends Artifact {
   }
 
   private double computeRewardValue(Object[] goalDescription, List<Integer> goalStates, double goalReward) {
-      int targetZ1Level = Integer.parseInt(goalDescription[0].toString());
-      int targetZ2Level = Integer.parseInt(goalDescription[1].toString());
+    try {
+        int targetZ1Level = Integer.parseInt(goalDescription[0].toString());
+        int targetZ2Level = Integer.parseInt(goalDescription[1].toString());
 
-      lab.readCurrentState();
-      List<Integer> stateVector = lab.currentState;
+        lab.readCurrentState();
+        List<Integer> stateVector = lab.currentState;
 
-      int actualZ1Level = stateVector.get(0);
-      int actualZ2Level = stateVector.get(1);
-      boolean zone1LightOn = stateVector.get(2) == 1;
-      boolean zone2LightOn = stateVector.get(3) == 1;
-      boolean zone1BlindsUp = stateVector.get(4) == 1;
-      boolean zone2BlindsUp = stateVector.get(5) == 1;
-      int sunshineLevel = stateVector.get(6);
+        if (stateVector == null || stateVector.size() < 7) {
+            return -1.0; 
+        }
 
-      int prevZ1 = previousIlluminanceLevels.get("Z1");
-      int prevZ2 = previousIlluminanceLevels.get("Z2");
+        int actualZ1Level = stateVector.get(0);
+        int actualZ2Level = stateVector.get(1);
+        boolean zone1LightOn = stateVector.get(2) == 1;
+        boolean zone2LightOn = stateVector.get(3) == 1;
+        boolean zone1BlindsUp = stateVector.get(4) == 1;
+        boolean zone2BlindsUp = stateVector.get(5) == 1;
+        int sunshineLevel = stateVector.get(6);
 
-      previousIlluminanceLevels.put("Z1", actualZ1Level);
-      previousIlluminanceLevels.put("Z2", actualZ2Level);
+        int prevZ1 = previousIlluminanceLevels.getOrDefault("Z1", actualZ1Level);
+        int prevZ2 = previousIlluminanceLevels.getOrDefault("Z2", actualZ2Level);
 
-      double totalReward = -0.1;
+        previousIlluminanceLevels.put("Z1", actualZ1Level);
+        previousIlluminanceLevels.put("Z2", actualZ2Level);
 
-      if (actualZ1Level == targetZ1Level && actualZ2Level == targetZ2Level) {
-          totalReward += goalReward;
-      }
+        double totalReward = -0.01;
 
-      if (zone1LightOn) totalReward -= 2.0;
-      if (zone2LightOn) totalReward -= 2.0;
-      if (zone1BlindsUp) totalReward -= 0.02;
-      if (zone2BlindsUp) totalReward -= 0.02;
+        boolean goalAchieved = (actualZ1Level == targetZ1Level && actualZ2Level == targetZ2Level);
+        
+        if (goalAchieved) {
+            totalReward += goalReward;
+            LOGGER.fine("GOAL ACHIEVED! Z1=" + actualZ1Level + ", Z2=" + actualZ2Level + 
+                       " matches target [" + targetZ1Level + "," + targetZ2Level + "]");
+            return totalReward; 
+        }
+        int z1Distance = Math.abs(actualZ1Level - targetZ1Level);
+        int z2Distance = Math.abs(actualZ2Level - targetZ2Level);
+        double totalDistance = z1Distance + z2Distance;
+        
+        if (totalDistance == 0) {
+            totalReward += goalReward;
+        } else {
+            double proximityReward = goalReward * 0.1 / (1 + totalDistance);
+            totalReward += proximityReward;
+        }
 
-      int z1Change = Math.abs(actualZ1Level - prevZ1);
-      int z2Change = Math.abs(actualZ2Level - prevZ2);
-      totalReward -= 0.1 * (z1Change + z2Change);
+        if (zone1LightOn) totalReward -= 0.5;
+        if (zone2LightOn) totalReward -= 0.5;
+        if (zone1BlindsUp) totalReward -= 0.01;
+        if (zone2BlindsUp) totalReward -= 0.01;
+    
+        int z1Change = Math.abs(actualZ1Level - prevZ1);
+        int z2Change = Math.abs(actualZ2Level - prevZ2);
+        totalReward -= 0.05 * (z1Change + z2Change);
+        if (sunshineLevel >= 2) {
+            if (zone1BlindsUp && zone1LightOn) {
+                totalReward -= 0.2;
+            }
+            if (zone2BlindsUp && zone2LightOn) {
+                totalReward -= 0.2;
+            }
+        }
 
-      if (sunshineLevel >= 2) {
-          if (zone1BlindsUp && zone1LightOn) {
-              totalReward -= 1.0;
-          }
-          if (zone2BlindsUp && zone2LightOn) {
-              totalReward -= 1.0;
-          }
-      }
-
-      return totalReward;
-  }
+        return totalReward;
+        
+    } catch (Exception e) {
+        LOGGER.warning("Error computing reward: " + e.getMessage());
+        return -1.0;
+    }
+}
 
   private int generateGoalKey(Object[] goalDescription) {
       return Arrays.hashCode(goalDescription);
